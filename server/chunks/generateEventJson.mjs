@@ -26,13 +26,44 @@ var AWSWeekday = /* @__PURE__ */ ((AWSWeekday2) => {
 
 const JST_TZ_OFFSET = 9;
 const weekdayMappings = [
-  { code: Number(Weekday.Sunday), awsCode: Number(AWSWeekday.Sunday) },
-  { code: Number(Weekday.Monday), awsCode: Number(AWSWeekday.Monday) },
-  { code: Number(Weekday.Tuesday), awsCode: Number(AWSWeekday.Tuesday) },
-  { code: Number(Weekday.Wednesday), awsCode: Number(AWSWeekday.Wednesday) },
-  { code: Number(Weekday.Thursday), awsCode: Number(AWSWeekday.Thursday) },
-  { code: Number(Weekday.Friday), awsCode: Number(AWSWeekday.Friday) },
-  { code: Number(Weekday.Saturday), awsCode: Number(AWSWeekday.Saturday) }
+  {
+    // Dateオブジェクトやcrondなどにおける曜日のコード0-6
+    code: Number(Weekday.Sunday),
+    // AWSEventBridgeにおける曜日のコード1-7
+    awsCode: Number(AWSWeekday.Sunday),
+    // AWSEventBridgeにおける曜日のコード1-7(1日前の曜日を返すときのコード値、日曜日(1)のとき土曜日(7)のコードを返す用)
+    awsCodeYesterday: Number(AWSWeekday.Saturday)
+  },
+  {
+    code: Number(Weekday.Monday),
+    awsCode: Number(AWSWeekday.Monday),
+    awsCodeYesterday: Number(AWSWeekday.Sunday)
+  },
+  {
+    code: Number(Weekday.Tuesday),
+    awsCode: Number(AWSWeekday.Tuesday),
+    awsCodeYesterday: Number(AWSWeekday.Monday)
+  },
+  {
+    code: Number(Weekday.Wednesday),
+    awsCode: Number(AWSWeekday.Wednesday),
+    awsCodeYesterday: Number(AWSWeekday.Tuesday)
+  },
+  {
+    code: Number(Weekday.Thursday),
+    awsCode: Number(AWSWeekday.Thursday),
+    awsCodeYesterday: Number(AWSWeekday.Wednesday)
+  },
+  {
+    code: Number(Weekday.Friday),
+    awsCode: Number(AWSWeekday.Friday),
+    awsCodeYesterday: Number(AWSWeekday.Thursday)
+  },
+  {
+    code: Number(Weekday.Saturday),
+    awsCode: Number(AWSWeekday.Saturday),
+    awsCodeYesterday: Number(AWSWeekday.Friday)
+  }
 ];
 const generateEventJson = defineEventHandler(async (req) => {
   const events = await readBody(req);
@@ -74,13 +105,14 @@ const generateEventJson = defineEventHandler(async (req) => {
   };
   schedules.forEach((schedule) => {
     const tmpDate = /* @__PURE__ */ new Date();
-    tmpDate.setHours(schedule.eventHour - JST_TZ_OFFSET, schedule.eventMinute, 0, 0);
-    const awsWeekdays = schedule.weekdays.map(
-      (weekday) => {
-        var _a;
-        return (_a = weekdayMappings.find((mapping) => mapping.code === weekday)) == null ? void 0 : _a.awsCode;
-      }
-    );
+    tmpDate.setHours(schedule.eventHour, schedule.eventMinute, 0, 0);
+    const jstDate = tmpDate.getDate();
+    tmpDate.setHours(tmpDate.getHours() - JST_TZ_OFFSET);
+    const utcDate = tmpDate.getDate();
+    const awsWeekdays = schedule.weekdays.map((weekday) => {
+      const mapping = weekdayMappings.find((mapping2) => mapping2.code === weekday);
+      return jstDate === utcDate ? mapping == null ? void 0 : mapping.awsCode : mapping == null ? void 0 : mapping.awsCodeYesterday;
+    });
     const cronRate = `cron(${schedule.eventMinute} ${tmpDate.getHours()} ? * ${awsWeekdays == null ? void 0 : awsWeekdays.join(",")} *)`;
     if (eventSchedule.schedule.rate.find((rate) => rate === cronRate)) {
       return;
