@@ -1,8 +1,8 @@
 import http from 'node:http';
 import https from 'node:https';
 import nodeFetch, { Headers as Headers$1 } from 'node-fetch-native';
-import { c as createFetch } from './shared/ofetch.502a4799.mjs';
-export { F as FetchError, a as createFetchError } from './shared/ofetch.502a4799.mjs';
+import { c as createFetch } from './shared/ofetch.d438bb6f.mjs';
+export { F as FetchError, a as createFetchError } from './shared/ofetch.d438bb6f.mjs';
 import 'destr';
 import 'ufo';
 

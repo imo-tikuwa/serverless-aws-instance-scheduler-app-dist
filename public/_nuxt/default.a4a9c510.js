@@ -1,0 +1,1 @@
+import{v as t,x as s,S as o,T as a}from"./entry.a0d059e5.js";const n=s({setup(){a({title:"起動スケジュールの管理ツール"})}});function r(e,d,f,p,c,u){return o(e.$slots,"default")}const i=t(n,[["render",r]]);export{i as default};

@@ -2,59 +2,119 @@ globalThis._importMeta_=globalThis._importMeta_||{url:"file:///_entry.js",env:pr
 import { Server as Server$1 } from 'node:http';
 import { Server } from 'node:https';
 import destr from 'destr';
-import { defineEventHandler, handleCacheHeaders, createEvent, eventHandler, setHeaders, sendRedirect, proxyRequest, getRequestHeader, getRequestHeaders, setResponseHeader, createError, createApp, createRouter as createRouter$1, toNodeListener, fetchWithEvent, lazyEventHandler } from 'h3';
+import { defineEventHandler, handleCacheHeaders, createEvent, eventHandler, setHeaders, sendRedirect, proxyRequest, getRequestHeader, setResponseStatus, setResponseHeader, getRequestHeaders, createError, createApp, createRouter as createRouter$1, toNodeListener, fetchWithEvent, lazyEventHandler } from 'h3';
 import { createFetch as createFetch$1, Headers } from 'ofetch';
 import { createCall, createFetch } from 'unenv/runtime/fetch/index';
 import { createHooks } from 'hookable';
 import { snakeCase } from 'scule';
+import { klona } from 'klona';
+import defu, { defuFn } from 'defu';
 import { hash } from 'ohash';
-import { parseURL, withoutBase, joinURL, withQuery, withLeadingSlash, withoutTrailingSlash } from 'ufo';
-import { createStorage } from 'unstorage';
-import defu from 'defu';
+import { parseURL, withoutBase, joinURL, getQuery, withQuery, withLeadingSlash, withoutTrailingSlash } from 'ufo';
+import { createStorage, prefixStorage } from 'unstorage';
 import { toRouteMatcher, createRouter } from 'radix3';
 import { promises } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'pathe';
+import gracefulShutdown from 'http-graceful-shutdown';
 
-const _runtimeConfig = {"app":{"baseURL":"/","buildAssetsDir":"/_nuxt/","cdnURL":""},"nitro":{"envPrefix":"NUXT_","routeRules":{"/__nuxt_error":{"cache":false},"/_nuxt/**":{"headers":{"cache-control":"public, max-age=2592000, immutable"}}}},"public":{}};
+const inlineAppConfig = {};
+
+
+
+const appConfig = defuFn(inlineAppConfig);
+
+const _inlineRuntimeConfig = {
+  "app": {
+    "baseURL": "/",
+    "buildAssetsDir": "/_nuxt/",
+    "cdnURL": ""
+  },
+  "nitro": {
+    "envPrefix": "NUXT_",
+    "routeRules": {
+      "/__nuxt_error": {
+        "cache": false
+      },
+      "/_nuxt/**": {
+        "headers": {
+          "cache-control": "public, max-age=31536000, immutable"
+        }
+      }
+    }
+  },
+  "public": {
+    "persistedState": {
+      "storage": "cookies",
+      "debug": false,
+      "cookieOptions": {}
+    }
+  }
+};
 const ENV_PREFIX = "NITRO_";
-const ENV_PREFIX_ALT = _runtimeConfig.nitro.envPrefix ?? process.env.NITRO_ENV_PREFIX ?? "_";
-const getEnv = (key) => {
+const ENV_PREFIX_ALT = _inlineRuntimeConfig.nitro.envPrefix ?? process.env.NITRO_ENV_PREFIX ?? "_";
+const _sharedRuntimeConfig = _deepFreeze(
+  _applyEnv(klona(_inlineRuntimeConfig))
+);
+function useRuntimeConfig(event) {
+  if (!event) {
+    return _sharedRuntimeConfig;
+  }
+  if (event.context.nitro.runtimeConfig) {
+    return event.context.nitro.runtimeConfig;
+  }
+  const runtimeConfig = klona(_inlineRuntimeConfig);
+  _applyEnv(runtimeConfig);
+  event.context.nitro.runtimeConfig = runtimeConfig;
+  return runtimeConfig;
+}
+_deepFreeze(klona(appConfig));
+function _getEnv(key) {
   const envKey = snakeCase(key).toUpperCase();
   return destr(
     process.env[ENV_PREFIX + envKey] ?? process.env[ENV_PREFIX_ALT + envKey]
   );
-};
-function isObject(input) {
+}
+function _isObject(input) {
   return typeof input === "object" && !Array.isArray(input);
 }
-function overrideConfig(obj, parentKey = "") {
+function _applyEnv(obj, parentKey = "") {
   for (const key in obj) {
     const subKey = parentKey ? `${parentKey}_${key}` : key;
-    const envValue = getEnv(subKey);
-    if (isObject(obj[key])) {
-      if (isObject(envValue)) {
+    const envValue = _getEnv(subKey);
+    if (_isObject(obj[key])) {
+      if (_isObject(envValue)) {
         obj[key] = { ...obj[key], ...envValue };
       }
-      overrideConfig(obj[key], subKey);
+      _applyEnv(obj[key], subKey);
     } else {
       obj[key] = envValue ?? obj[key];
     }
   }
+  return obj;
 }
-overrideConfig(_runtimeConfig);
-const config$1 = deepFreeze(_runtimeConfig);
-const useRuntimeConfig = () => config$1;
-function deepFreeze(object) {
+function _deepFreeze(object) {
   const propNames = Object.getOwnPropertyNames(object);
   for (const name of propNames) {
     const value = object[name];
     if (value && typeof value === "object") {
-      deepFreeze(value);
+      _deepFreeze(value);
     }
   }
   return Object.freeze(object);
 }
+new Proxy(/* @__PURE__ */ Object.create(null), {
+  get: (_, prop) => {
+    console.warn(
+      "Please use `useRuntimeConfig()` instead of accessing config directly."
+    );
+    const runtimeConfig = useRuntimeConfig();
+    if (prop in runtimeConfig) {
+      return runtimeConfig[prop];
+    }
+    return void 0;
+  }
+});
 
 const _assets = {
 
@@ -87,9 +147,11 @@ const assets$1 = {
 
 const storage = createStorage({});
 
-const useStorage = () => storage;
-
 storage.mount('/assets', assets$1);
+
+function useStorage(base = "") {
+  return base ? prefixStorage(storage, base) : storage;
+}
 
 const defaultCacheOptions = {
   name: "_",
@@ -97,10 +159,10 @@ const defaultCacheOptions = {
   swr: true,
   maxAge: 1
 };
-function defineCachedFunction(fn, opts) {
+function defineCachedFunction(fn, opts = {}) {
   opts = { ...defaultCacheOptions, ...opts };
   const pending = {};
-  const group = opts.group || "nitro";
+  const group = opts.group || "nitro/functions";
   const name = opts.name || fn.name || "_";
   const integrity = hash([opts.integrity, fn, opts]);
   const validate = opts.validate || (() => true);
@@ -115,7 +177,7 @@ function defineCachedFunction(fn, opts) {
     const _resolve = async () => {
       const isPending = pending[key];
       if (!isPending) {
-        if (entry.value !== void 0 && (opts.staleMaxAge || 0) >= 0) {
+        if (entry.value !== void 0 && (opts.staleMaxAge || 0) >= 0 && opts.swr === false) {
           entry.value = void 0;
           entry.integrity = void 0;
           entry.mtime = void 0;
@@ -123,7 +185,14 @@ function defineCachedFunction(fn, opts) {
         }
         pending[key] = Promise.resolve(resolver());
       }
-      entry.value = await pending[key];
+      try {
+        entry.value = await pending[key];
+      } catch (error) {
+        if (!isPending) {
+          delete pending[key];
+        }
+        throw error;
+      }
       if (!isPending) {
         entry.mtime = Date.now();
         entry.integrity = integrity;
@@ -197,6 +266,10 @@ function defineCachedEventHandler(handler, opts = defaultCacheOptions) {
       let _resSendBody;
       const resProxy = cloneWithProxy(incomingEvent.node.res, {
         statusCode: 200,
+        writableEnded: false,
+        writableFinished: false,
+        headersSent: false,
+        closed: false,
         getHeader(name) {
           return resHeaders[name];
         },
@@ -351,6 +424,9 @@ function createRouteRulesHandler() {
           targetPath = withoutBase(targetPath, strpBase);
         }
         target = joinURL(target.slice(0, -3), targetPath);
+      } else if (event.path.includes("?")) {
+        const query = getQuery(event.path);
+        target = withQuery(target, query);
       }
       return proxyRequest(event, target, {
         fetch: $fetch.raw,
@@ -403,6 +479,18 @@ function normalizeError(error) {
     message
   };
 }
+function trapUnhandledNodeErrors() {
+  {
+    process.on(
+      "unhandledRejection",
+      (err) => console.error("[nitro] [unhandledRejection] " + err)
+    );
+    process.on(
+      "uncaughtException",
+      (err) => console.error("[nitro]  [uncaughtException] " + err)
+    );
+  }
+}
 
 const errorHandler = (async function errorhandler(error, event) {
   const { stack, statusCode, statusMessage, message } = normalizeError(error);
@@ -414,10 +502,7 @@ const errorHandler = (async function errorhandler(error, event) {
     stack: "",
     data: error.data
   };
-  event.node.res.statusCode = errorObject.statusCode !== 200 && errorObject.statusCode || 500;
-  if (errorObject.statusMessage) {
-    event.node.res.statusMessage = errorObject.statusMessage;
-  }
+  setResponseStatus(event, errorObject.statusCode !== 200 && errorObject.statusCode || 500, errorObject.statusMessage);
   if (error.unhandled || error.fatal) {
     const tags = [
       "[nuxt]",
@@ -429,7 +514,7 @@ const errorHandler = (async function errorhandler(error, event) {
     console.error(tags, errorObject.message + "\n" + stack.map((l) => "  " + l.text).join("  \n"));
   }
   if (isJsonRequest(event)) {
-    event.node.res.setHeader("Content-Type", "application/json");
+    setResponseHeader(event, "Content-Type", "application/json");
     event.node.res.end(JSON.stringify(errorObject));
     return;
   }
@@ -440,19 +525,14 @@ const errorHandler = (async function errorhandler(error, event) {
   }).catch(() => null) : null;
   if (!res) {
     const { template } = await import('../error-500.mjs');
-    event.node.res.setHeader("Content-Type", "text/html;charset=UTF-8");
+    setResponseHeader(event, "Content-Type", "text/html;charset=UTF-8");
     event.node.res.end(template(errorObject));
     return;
   }
   for (const [header, value] of res.headers.entries()) {
     setResponseHeader(event, header, value);
   }
-  if (res.status && res.status !== 200) {
-    event.node.res.statusCode = res.status;
-  }
-  if (res.statusText) {
-    event.node.res.statusMessage = res.statusText;
-  }
+  setResponseStatus(event, res.status && res.status !== 200 ? res.status : void 0, res.statusText);
   event.node.res.end(await res.text());
 });
 
@@ -460,119 +540,112 @@ const assets = {
   "/favicon.ico": {
     "type": "image/vnd.microsoft.icon",
     "etag": "\"423e-ffsXXFqvc3wsCtsMB7tKCsT47mo\"",
-    "mtime": "2023-06-12T07:51:08.953Z",
+    "mtime": "2023-06-22T14:42:08.542Z",
     "size": 16958,
     "path": "../public/favicon.ico"
   },
   "/_nuxt/color.473bc8ca.png": {
     "type": "image/png",
     "etag": "\"2873-/0xLyyIHiRspL1RO202p0t9dRc8\"",
-    "mtime": "2023-06-12T07:51:08.953Z",
+    "mtime": "2023-06-22T14:42:08.542Z",
     "size": 10355,
     "path": "../public/_nuxt/color.473bc8ca.png"
   },
-  "/_nuxt/composables.adf4a7c0.js": {
+  "/_nuxt/default.a4a9c510.js": {
     "type": "application/javascript",
-    "etag": "\"5c-/2QBxC5OVE7DJg3aLpazVjmDR14\"",
-    "mtime": "2023-06-12T07:51:08.953Z",
-    "size": 92,
-    "path": "../public/_nuxt/composables.adf4a7c0.js"
+    "etag": "\"f2-ynO2ZlO6VwjaVZw3Q2qmUF6+SeU\"",
+    "mtime": "2023-06-22T14:42:08.542Z",
+    "size": 242,
+    "path": "../public/_nuxt/default.a4a9c510.js"
   },
-  "/_nuxt/default.8d24c087.js": {
+  "/_nuxt/entry.a0d059e5.js": {
     "type": "application/javascript",
-    "etag": "\"114-0rMFdbXh/4YU+Jxkq6nGsTVuYVU\"",
-    "mtime": "2023-06-12T07:51:08.953Z",
-    "size": 276,
-    "path": "../public/_nuxt/default.8d24c087.js"
+    "etag": "\"cc6b6-Onam99h38JzT/YR7xEq2Jvhfvw8\"",
+    "mtime": "2023-06-22T14:42:08.542Z",
+    "size": 837302,
+    "path": "../public/_nuxt/entry.a0d059e5.js"
   },
-  "/_nuxt/entry.4c91a4a9.js": {
-    "type": "application/javascript",
-    "etag": "\"aee0f-p1KIegCaOf1ybYXyf3d/xjI6Y88\"",
-    "mtime": "2023-06-12T07:51:08.953Z",
-    "size": 716303,
-    "path": "../public/_nuxt/entry.4c91a4a9.js"
-  },
-  "/_nuxt/entry.c5addb46.css": {
+  "/_nuxt/entry.ba0b27a2.css": {
     "type": "text/css; charset=utf-8",
-    "etag": "\"79ada-UZnjcZhIcUWAF4FgNyldVpTV6Ok\"",
-    "mtime": "2023-06-12T07:51:08.953Z",
-    "size": 498394,
-    "path": "../public/_nuxt/entry.c5addb46.css"
+    "etag": "\"79deb-JtIqwxFpENp360NzA/oIxNEsmMA\"",
+    "mtime": "2023-06-22T14:42:08.538Z",
+    "size": 499179,
+    "path": "../public/_nuxt/entry.ba0b27a2.css"
   },
   "/_nuxt/error-404.23f2309d.css": {
     "type": "text/css; charset=utf-8",
     "etag": "\"e2e-ivsbEmi48+s9HDOqtrSdWFvddYQ\"",
-    "mtime": "2023-06-12T07:51:08.953Z",
+    "mtime": "2023-06-22T14:42:08.538Z",
     "size": 3630,
     "path": "../public/_nuxt/error-404.23f2309d.css"
   },
-  "/_nuxt/error-404.e219760c.js": {
+  "/_nuxt/error-404.83a2e171.js": {
     "type": "application/javascript",
-    "etag": "\"17e8-PaPplTaWP780UOTjXB9Q4CdXz6A\"",
-    "mtime": "2023-06-12T07:51:08.953Z",
-    "size": 6120,
-    "path": "../public/_nuxt/error-404.e219760c.js"
+    "etag": "\"196c-sf3+i8GxDiVvX7JqkaykvDYWnsU\"",
+    "mtime": "2023-06-22T14:42:08.538Z",
+    "size": 6508,
+    "path": "../public/_nuxt/error-404.83a2e171.js"
   },
-  "/_nuxt/error-500.6a0a8489.js": {
+  "/_nuxt/error-500.9b24528d.js": {
     "type": "application/javascript",
-    "etag": "\"77d-o6UsF71yHc8G+7MSbfjEoS+El8I\"",
-    "mtime": "2023-06-12T07:51:08.949Z",
-    "size": 1917,
-    "path": "../public/_nuxt/error-500.6a0a8489.js"
+    "etag": "\"758-nQ14wi9na04E46Ju9zztOqXy1EI\"",
+    "mtime": "2023-06-22T14:42:08.538Z",
+    "size": 1880,
+    "path": "../public/_nuxt/error-500.9b24528d.js"
   },
   "/_nuxt/error-500.aa16ed4d.css": {
     "type": "text/css; charset=utf-8",
     "etag": "\"79e-7j4Tsx89siDo85YoIs0XqsPWmPI\"",
-    "mtime": "2023-06-12T07:51:08.949Z",
+    "mtime": "2023-06-22T14:42:08.538Z",
     "size": 1950,
     "path": "../public/_nuxt/error-500.aa16ed4d.css"
   },
-  "/_nuxt/error-component.a13cdf7e.js": {
+  "/_nuxt/error-component.0bdabb3e.js": {
     "type": "application/javascript",
-    "etag": "\"496-Z2Gs+MvhCdJlO2FXmzkLdyaXxAE\"",
-    "mtime": "2023-06-12T07:51:08.949Z",
-    "size": 1174,
-    "path": "../public/_nuxt/error-component.a13cdf7e.js"
+    "etag": "\"45e-YaeNk36xUIfmEkNp84Kf9IIhhx4\"",
+    "mtime": "2023-06-22T14:42:08.538Z",
+    "size": 1118,
+    "path": "../public/_nuxt/error-component.0bdabb3e.js"
   },
-  "/_nuxt/index.5dd8494d.js": {
+  "/_nuxt/index.c7145503.js": {
     "type": "application/javascript",
-    "etag": "\"8ff8-p1f3ve2HL25Lh43cqGs6Q2ksmiM\"",
-    "mtime": "2023-06-12T07:51:08.949Z",
-    "size": 36856,
-    "path": "../public/_nuxt/index.5dd8494d.js"
+    "etag": "\"912e-1mudXyIgFDDQ5ROerlse/rtVjNw\"",
+    "mtime": "2023-06-22T14:42:08.538Z",
+    "size": 37166,
+    "path": "../public/_nuxt/index.c7145503.js"
   },
   "/_nuxt/primeicons.131bc3bf.ttf": {
     "type": "font/ttf",
     "etag": "\"11a0c-zutG1ZT95cxQfN+LcOOOeP5HZTw\"",
-    "mtime": "2023-06-12T07:51:08.949Z",
+    "mtime": "2023-06-22T14:42:08.538Z",
     "size": 72204,
     "path": "../public/_nuxt/primeicons.131bc3bf.ttf"
   },
   "/_nuxt/primeicons.3824be50.woff2": {
     "type": "font/woff2",
     "etag": "\"75e4-VaSypfAuNiQF2Nh0kDrwtfamwV0\"",
-    "mtime": "2023-06-12T07:51:08.949Z",
+    "mtime": "2023-06-22T14:42:08.534Z",
     "size": 30180,
     "path": "../public/_nuxt/primeicons.3824be50.woff2"
   },
   "/_nuxt/primeicons.5e10f102.svg": {
     "type": "image/svg+xml",
     "etag": "\"4727e-0zMqRSQrj27b8/PHF2ooDn7c2WE\"",
-    "mtime": "2023-06-12T07:51:08.949Z",
+    "mtime": "2023-06-22T14:42:08.534Z",
     "size": 291454,
     "path": "../public/_nuxt/primeicons.5e10f102.svg"
   },
   "/_nuxt/primeicons.90a58d3a.woff": {
     "type": "font/woff",
     "etag": "\"11a58-sWSLUL4TNQ/ei12ab+eDVN3MQ+Q\"",
-    "mtime": "2023-06-12T07:51:08.949Z",
+    "mtime": "2023-06-22T14:42:08.534Z",
     "size": 72280,
     "path": "../public/_nuxt/primeicons.90a58d3a.woff"
   },
   "/_nuxt/primeicons.ce852338.eot": {
     "type": "application/vnd.ms-fontobject",
     "etag": "\"11abc-5N8jVcQFzTiq2jbtqQFagQ/quUw\"",
-    "mtime": "2023-06-12T07:51:08.949Z",
+    "mtime": "2023-06-22T14:42:08.534Z",
     "size": 72380,
     "path": "../public/_nuxt/primeicons.ce852338.eot"
   }
@@ -583,7 +656,7 @@ function readAsset (id) {
   return promises.readFile(resolve(serverDir, assets[id].path))
 }
 
-const publicAssetBases = {"/_nuxt":{"maxAge":2592000}};
+const publicAssetBases = {"/_nuxt":{"maxAge":31536000}};
 
 function isPublicAssetURL(id = '') {
   if (assets[id]) {
@@ -643,14 +716,19 @@ const _f4b49z = eventHandler((event) => {
   }
   const ifNotMatch = event.node.req.headers["if-none-match"] === asset.etag;
   if (ifNotMatch) {
-    event.node.res.statusCode = 304;
-    event.node.res.end();
+    if (!event.handled) {
+      event.node.res.statusCode = 304;
+      event.node.res.end();
+    }
     return;
   }
   const ifModifiedSinceH = event.node.req.headers["if-modified-since"];
-  if (ifModifiedSinceH && asset.mtime && new Date(ifModifiedSinceH) >= new Date(asset.mtime)) {
-    event.node.res.statusCode = 304;
-    event.node.res.end();
+  const mtimeDate = new Date(asset.mtime);
+  if (ifModifiedSinceH && asset.mtime && new Date(ifModifiedSinceH) >= mtimeDate) {
+    if (!event.handled) {
+      event.node.res.statusCode = 304;
+      event.node.res.end();
+    }
     return;
   }
   if (asset.type && !event.node.res.getHeader("Content-Type")) {
@@ -660,7 +738,7 @@ const _f4b49z = eventHandler((event) => {
     event.node.res.setHeader("ETag", asset.etag);
   }
   if (asset.mtime && !event.node.res.getHeader("Last-Modified")) {
-    event.node.res.setHeader("Last-Modified", asset.mtime);
+    event.node.res.setHeader("Last-Modified", mtimeDate.toUTCString());
   }
   if (asset.encoding && !event.node.res.getHeader("Content-Encoding")) {
     event.node.res.setHeader("Content-Encoding", asset.encoding);
@@ -671,18 +749,18 @@ const _f4b49z = eventHandler((event) => {
   return readAsset(id);
 });
 
-const _lazy_AefnyH = () => import('../generateEventJson.mjs');
-const _lazy_aCpQoY = () => import('../findLightsailInstances.mjs');
-const _lazy_jlF9wX = () => import('../findEventBridgeInputConstant.mjs');
 const _lazy_cRSbJp = () => import('../findEc2Instances.mjs');
+const _lazy_jlF9wX = () => import('../findEventBridgeInputConstant.mjs');
+const _lazy_aCpQoY = () => import('../findLightsailInstances.mjs');
+const _lazy_AefnyH = () => import('../generateEventJson.mjs');
 const _lazy_rbjlrX = () => import('../handlers/renderer.mjs');
 
 const handlers = [
   { route: '', handler: _f4b49z, lazy: false, middleware: true, method: undefined },
-  { route: '/api/generateEventJson', handler: _lazy_AefnyH, lazy: true, middleware: false, method: undefined },
-  { route: '/api/findLightsailInstances', handler: _lazy_aCpQoY, lazy: true, middleware: false, method: undefined },
-  { route: '/api/findEventBridgeInputConstant', handler: _lazy_jlF9wX, lazy: true, middleware: false, method: undefined },
   { route: '/api/findEc2Instances', handler: _lazy_cRSbJp, lazy: true, middleware: false, method: undefined },
+  { route: '/api/findEventBridgeInputConstant', handler: _lazy_jlF9wX, lazy: true, middleware: false, method: undefined },
+  { route: '/api/findLightsailInstances', handler: _lazy_aCpQoY, lazy: true, middleware: false, method: undefined },
+  { route: '/api/generateEventJson', handler: _lazy_AefnyH, lazy: true, middleware: false, method: undefined },
   { route: '/__nuxt_error', handler: _lazy_rbjlrX, lazy: true, middleware: false, method: undefined },
   { route: '/**', handler: _lazy_rbjlrX, lazy: true, middleware: false, method: undefined }
 ];
@@ -706,6 +784,7 @@ function createNitroApp() {
   globalThis.$fetch = $fetch;
   h3App.use(
     eventHandler((event) => {
+      event.context.nitro = event.context.nitro || {};
       const envContext = event.node.req.__unenv__;
       if (envContext) {
         Object.assign(event.context, envContext);
@@ -735,7 +814,7 @@ function createNitroApp() {
       router.use(h.route, handler, h.method);
     }
   }
-  h3App.use(config.app.baseURL, router);
+  h3App.use(config.app.baseURL, router.handler);
   const app = {
     hooks,
     h3App,
@@ -751,32 +830,58 @@ function createNitroApp() {
 const nitroApp = createNitroApp();
 const useNitroApp = () => nitroApp;
 
+function getGracefulShutdownConfig() {
+  return {
+    disabled: !!process.env.NITRO_SHUTDOWN_DISABLED,
+    signals: (process.env.NITRO_SHUTDOWN_SIGNALS || "SIGTERM SIGINT").split(" ").map((s) => s.trim()),
+    timeout: Number.parseInt(process.env.NITRO_SHUTDOWN_TIMEOUT, 10) || 3e4,
+    forceExit: !process.env.NITRO_SHUTDOWN_NO_FORCE_EXIT
+  };
+}
+function setupGracefulShutdown(listener, nitroApp) {
+  const shutdownConfig = getGracefulShutdownConfig();
+  if (shutdownConfig.disabled) {
+    return;
+  }
+  gracefulShutdown(listener, {
+    signals: shutdownConfig.signals.join(" "),
+    timeout: shutdownConfig.timeout,
+    forceExit: shutdownConfig.forceExit,
+    onShutdown: async () => {
+      await new Promise((resolve) => {
+        const timeout = setTimeout(() => {
+          console.warn("Graceful shutdown timeout, force exiting...");
+          resolve();
+        }, shutdownConfig.timeout);
+        nitroApp.hooks.callHook("close").catch((err) => {
+          console.error(err);
+        }).finally(() => {
+          clearTimeout(timeout);
+          resolve();
+        });
+      });
+    }
+  });
+}
+
 const cert = process.env.NITRO_SSL_CERT;
 const key = process.env.NITRO_SSL_KEY;
 const server = cert && key ? new Server({ key, cert }, toNodeListener(nitroApp.h3App)) : new Server$1(toNodeListener(nitroApp.h3App));
 const port = destr(process.env.NITRO_PORT || process.env.PORT) || 3e3;
 const host = process.env.NITRO_HOST || process.env.HOST;
-const s = server.listen(port, host, (err) => {
+const listener = server.listen(port, host, (err) => {
   if (err) {
     console.error(err);
     process.exit(1);
   }
   const protocol = cert && key ? "https" : "http";
-  const i = s.address();
+  const addressInfo = listener.address();
   const baseURL = (useRuntimeConfig().app.baseURL || "").replace(/\/$/, "");
-  const url = `${protocol}://${i.family === "IPv6" ? `[${i.address}]` : i.address}:${i.port}${baseURL}`;
+  const url = `${protocol}://${addressInfo.family === "IPv6" ? `[${addressInfo.address}]` : addressInfo.address}:${addressInfo.port}${baseURL}`;
   console.log(`Listening ${url}`);
 });
-{
-  process.on(
-    "unhandledRejection",
-    (err) => console.error("[nitro] [dev] [unhandledRejection] " + err)
-  );
-  process.on(
-    "uncaughtException",
-    (err) => console.error("[nitro] [dev] [uncaughtException] " + err)
-  );
-}
+trapUnhandledNodeErrors();
+setupGracefulShutdown(listener, nitroApp);
 const nodeServer = {};
 
 export { useRuntimeConfig as a, getRouteRules as g, nodeServer as n, useNitroApp as u };

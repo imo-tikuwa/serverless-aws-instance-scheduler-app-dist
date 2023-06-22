@@ -8,12 +8,14 @@ import 'ofetch';
 import 'unenv/runtime/fetch/index';
 import 'hookable';
 import 'scule';
+import 'klona';
+import 'defu';
 import 'ohash';
 import 'ufo';
 import 'unstorage';
-import 'defu';
 import 'radix3';
 import 'node:fs';
 import 'node:url';
 import 'pathe';
+import 'http-graceful-shutdown';
 //# sourceMappingURL=index.mjs.map

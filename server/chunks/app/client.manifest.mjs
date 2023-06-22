@@ -1,19 +1,10 @@
 const client_manifest = {
-  "_composables.adf4a7c0.js": {
-    "resourceType": "script",
-    "module": true,
-    "file": "composables.adf4a7c0.js",
-    "imports": [
-      "node_modules/nuxt/dist/app/entry.mjs"
-    ]
-  },
   "layouts/default.vue": {
     "resourceType": "script",
     "module": true,
-    "file": "default.8d24c087.js",
+    "file": "default.a4a9c510.js",
     "imports": [
-      "node_modules/nuxt/dist/app/entry.mjs",
-      "_composables.adf4a7c0.js"
+      "node_modules/nuxt/dist/app/entry.js"
     ],
     "isDynamicEntry": true,
     "src": "layouts/default.vue"
@@ -29,10 +20,9 @@ const client_manifest = {
     "css": [
       "error-404.23f2309d.css"
     ],
-    "file": "error-404.e219760c.js",
+    "file": "error-404.83a2e171.js",
     "imports": [
-      "node_modules/nuxt/dist/app/entry.mjs",
-      "_composables.adf4a7c0.js"
+      "node_modules/nuxt/dist/app/entry.js"
     ],
     "isDynamicEntry": true,
     "src": "node_modules/@nuxt/ui-templates/dist/templates/error-404.vue"
@@ -52,10 +42,9 @@ const client_manifest = {
     "css": [
       "error-500.aa16ed4d.css"
     ],
-    "file": "error-500.6a0a8489.js",
+    "file": "error-500.9b24528d.js",
     "imports": [
-      "node_modules/nuxt/dist/app/entry.mjs",
-      "_composables.adf4a7c0.js"
+      "node_modules/nuxt/dist/app/entry.js"
     ],
     "isDynamicEntry": true,
     "src": "node_modules/@nuxt/ui-templates/dist/templates/error-500.vue"
@@ -66,10 +55,10 @@ const client_manifest = {
   },
   "node_modules/nuxt/dist/app/entry.css": {
     "resourceType": "style",
-    "file": "entry.c5addb46.css",
+    "file": "entry.ba0b27a2.css",
     "src": "node_modules/nuxt/dist/app/entry.css"
   },
-  "node_modules/nuxt/dist/app/entry.mjs": {
+  "node_modules/nuxt/dist/app/entry.js": {
     "resourceType": "script",
     "module": true,
     "assets": [
@@ -81,18 +70,18 @@ const client_manifest = {
       "primeicons.5e10f102.svg"
     ],
     "css": [
-      "entry.c5addb46.css"
+      "entry.ba0b27a2.css"
     ],
     "dynamicImports": [
       "layouts/default.vue",
       "virtual:nuxt:/home/runner/work/serverless-aws-instance-scheduler/serverless-aws-instance-scheduler/main/app/.nuxt/error-component.mjs"
     ],
-    "file": "entry.4c91a4a9.js",
+    "file": "entry.a0d059e5.js",
     "isEntry": true,
-    "src": "node_modules/nuxt/dist/app/entry.mjs"
+    "src": "node_modules/nuxt/dist/app/entry.js"
   },
-  "entry.c5addb46.css": {
-    "file": "entry.c5addb46.css",
+  "entry.ba0b27a2.css": {
+    "file": "entry.ba0b27a2.css",
     "resourceType": "style"
   },
   "color.473bc8ca.png": {
@@ -164,9 +153,9 @@ const client_manifest = {
   "pages/index.vue": {
     "resourceType": "script",
     "module": true,
-    "file": "index.5dd8494d.js",
+    "file": "index.c7145503.js",
     "imports": [
-      "node_modules/nuxt/dist/app/entry.mjs"
+      "node_modules/nuxt/dist/app/entry.js"
     ],
     "isDynamicEntry": true,
     "src": "pages/index.vue"
@@ -178,9 +167,9 @@ const client_manifest = {
       "node_modules/@nuxt/ui-templates/dist/templates/error-404.vue",
       "node_modules/@nuxt/ui-templates/dist/templates/error-500.vue"
     ],
-    "file": "error-component.a13cdf7e.js",
+    "file": "error-component.0bdabb3e.js",
     "imports": [
-      "node_modules/nuxt/dist/app/entry.mjs"
+      "node_modules/nuxt/dist/app/entry.js"
     ],
     "isDynamicEntry": true,
     "src": "virtual:nuxt:/home/runner/work/serverless-aws-instance-scheduler/serverless-aws-instance-scheduler/main/app/.nuxt/error-component.mjs"
